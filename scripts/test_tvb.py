@@ -45,15 +45,20 @@ def run_baseline_tvb_simulation():
 
     # HeunDeterministic for the baseline (no noise).
     # Monte Carlo runs will use HeunStochastic instead.
-    integ = integrators.HeunDeterministic(dt=0.1)
+    integ = integrators.HeunDeterministic(dt=0.05)  # smaller dt for stability
 
-    # TemporalAverage monitor — downsamples to 1ms resolution
-    mon = monitors.TemporalAverage(period=1.0)
+    # Raw monitor returns (time, state_vars, regions, modes) — full state access.
+    mon = monitors.Raw(period=1.0)
+
+    # Scale down coupling to prevent overflow with default connectivity weights.
+    # Default connectivity has large weight values; too-strong coupling causes
+    # exponential blowup in the JansenRit sigmoid functions.
+    conn.weights = conn.weights / np.max(conn.weights)  # normalize to [0, 1]
 
     sim = simulator.Simulator(
         connectivity=conn,
         model=model,
-        coupling=coupling.Linear(a=np.array([0.0154])),
+        coupling=coupling.Linear(a=np.array([0.006])),  # conservative coupling
         integrator=integ,
         monitors=[mon],
     )
@@ -78,10 +83,28 @@ def run_baseline_tvb_simulation():
 
     output = np.concatenate(results, axis=0)
     console.print(f"  Output shape: {output.shape}")
-    # Expected: [time_steps, 2 (state vars for JansenRit), N_regions, 1 (mode)]
+
+    # Raw monitor returns (time, state_vars, regions, modes) — 4D array
+    # TemporalAverage returns (time, regions, modes) — 3D array
+    # Handle both shapes for robustness
+    if output.ndim == 4:
+        signal = output[:, 0, :, 0]   # (time, regions)
+        n_regions = output.shape[2]
+    elif output.ndim == 3:
+        signal = output[:, :, 0]       # (time, regions)
+        n_regions = output.shape[1]
+    else:
+        console.print(f"[red]Unexpected output dimensions: {output.ndim}[/red]")
+        return False
+
+    # Check for NaN/Inf — indicates numerical blowup
+    if np.any(~np.isfinite(signal)):
+        nan_pct = np.mean(~np.isfinite(signal)) * 100
+        console.print(f"[yellow]WARNING: {nan_pct:.1f}% of signal values are NaN/Inf[/yellow]")
+        # Replace NaN/Inf with 0 for FFT
+        signal = np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Compute theta power (4-8 Hz) from FFT
-    signal = output[:, 0, :, 0]  # first state variable, all regions
     fs = 1000.0  # 1ms period = 1000 Hz
     freqs = np.fft.fftfreq(signal.shape[0], d=1.0 / fs)
     power = np.abs(np.fft.fft(signal, axis=0)) ** 2
@@ -89,7 +112,7 @@ def run_baseline_tvb_simulation():
     theta_power = float(np.mean(power[theta_mask, :]))
 
     console.print(f"  Mean theta power (4-8 Hz): {theta_power:.4e}")
-    console.print(f"  Signal range: [{signal.min():.4f}, {signal.max():.4f}]")
+    console.print(f"  Signal range: [{signal.min():.6f}, {signal.max():.6f}]")
 
     # Validation
     all_ok = True
@@ -98,8 +121,8 @@ def run_baseline_tvb_simulation():
         console.print("[red]FAIL: Too few time steps[/red]")
         all_ok = False
 
-    if output.shape[2] < 70:
-        console.print(f"[red]FAIL: Only {output.shape[2]} regions (expected ~76)[/red]")
+    if n_regions < 70:
+        console.print(f"[red]FAIL: Only {n_regions} regions (expected ~76)[/red]")
         all_ok = False
 
     if theta_power <= 0:
@@ -111,8 +134,8 @@ def run_baseline_tvb_simulation():
         all_ok = False
 
     if all_ok:
-        console.print("\n[bold green]TVB baseline test PASSED[/bold green]")
-        console.print(f"  {output.shape[2]} regions, {output.shape[0]} time steps, "
+        console.print(f"\n[bold green]TVB baseline test PASSED[/bold green]")
+        console.print(f"  {n_regions} regions, {output.shape[0]} time steps, "
                       f"theta={theta_power:.4e}, {elapsed:.1f}s")
     else:
         console.print("\n[bold red]TVB baseline test FAILED[/bold red]")

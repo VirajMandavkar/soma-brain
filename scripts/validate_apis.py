@@ -186,9 +186,9 @@ if __name__ == "__main__":
         check(name, fn)
         _, ok, msg = results[-1]
         if ok:
-            console.print(f"[green]\u2713[/green] {msg}")
+            console.print(f"[green]OK[/green] {msg}")
         else:
-            console.print(f"[red]\u2717[/red] {msg}")
+            console.print(f"[red]FAIL[/red] {msg}")
 
     # Summary table
     console.print()
@@ -199,7 +199,7 @@ if __name__ == "__main__":
 
     passed = 0
     for name, ok, msg in results:
-        status = "[green]\u2713 PASS[/green]" if ok else "[red]\u2717 FAIL[/red]"
+        status = "[green]OK PASS[/green]" if ok else "[red]FAIL FAIL[/red]"
         table.add_row(name, status, msg[:80])
         if ok:
             passed += 1

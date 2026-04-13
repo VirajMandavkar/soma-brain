@@ -6,7 +6,7 @@
 # --- Brain Simulation ---
 tvb-library==2.9.0
 scipy>=1.13.1
-numpy>=1.26.4
+numpy>=1.26.4,<2.0   # TVB 2.9 incompatible with NumPy 2.x (numpy.can_cast API change)
 SALib>=1.5.1
 brian2>=2.6.0
 nilearn>=0.10.4
