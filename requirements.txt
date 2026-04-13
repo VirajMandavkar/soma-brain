@@ -1,0 +1,60 @@
+# ============================================================
+# SOMA Brain — Production Dependencies
+# Install: pip install -r requirements.txt
+# ============================================================
+
+# --- Brain Simulation ---
+tvb-library==2.9.0
+scipy>=1.13.1
+numpy>=1.26.4
+SALib>=1.5.1
+brian2>=2.6.0
+nilearn>=0.10.4
+mne>=1.7.1
+
+# --- Chemistry & Docking ---
+rdkit>=2024.3.5
+vina>=1.2.5
+
+# --- AI / LLM ---
+transformers>=4.43.0
+torch>=2.3.1
+peft>=0.11.1
+bitsandbytes>=0.43.1
+langgraph>=0.1.19
+langchain>=0.2.11
+langchain-community>=0.2.11
+
+# --- Protein Structure ---
+fair-esm>=2.0.0
+
+# --- Data Layer ---
+neo4j>=5.22.0
+weaviate-client>=4.7.0
+sqlalchemy>=2.0.31
+asyncpg>=0.29.0
+alembic>=1.13.2
+duckdb>=1.0.0
+
+# --- API ---
+fastapi>=0.111.1
+uvicorn[standard]>=0.30.1
+celery>=5.4.0
+redis>=5.0.7
+
+# --- Cloud / GPU ---
+modal>=0.64.0
+
+# --- Utilities ---
+python-dotenv>=1.0.1
+pydantic>=2.8.2
+pydantic-settings>=2.3.4
+loguru>=0.7.2
+rich>=13.7.1
+requests>=2.32.3
+httpx>=0.27.0
+PyMuPDF>=1.24.7
+
+# --- Auth ---
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4

@@ -1,0 +1,90 @@
+# ============================================================
+# SOMA Brain — Local Development Services
+# Run: docker compose up -d
+# ============================================================
+
+services:
+  # --- Knowledge Graph ---
+  neo4j:
+    image: neo4j:5.22-community
+    container_name: soma-neo4j
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-soma_brain_neo4j_2026}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Vector Store ---
+  weaviate:
+    image: semitechnologies/weaviate:1.26.1
+    container_name: soma-weaviate
+    ports:
+      - "8080:8080"   # REST API
+      - "50051:50051"  # gRPC
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "text2vec-transformers"
+      ENABLE_MODULES: "text2vec-transformers"
+      TRANSFORMERS_INFERENCE_API: "http://t2v-transformers:8080"
+      CLUSTER_HOSTNAME: "node1"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    depends_on:
+      - t2v-transformers
+
+  # --- Embedding Model for Weaviate ---
+  t2v-transformers:
+    image: semitechnologies/transformers-inference:sentence-transformers-all-mpnet-base-v2
+    container_name: soma-embeddings
+    environment:
+      ENABLE_CUDA: "0"   # CPU mode for local dev; set to 1 if you have GPU
+
+  # --- PostgreSQL + TimescaleDB ---
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: soma-postgres
+    ports:
+      - "5433:5432"   # 5433 on host → avoids conflict with existing PG on 5432
+    environment:
+      POSTGRES_DB: soma_brain
+      POSTGRES_USER: soma
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soma_brain_pg_2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soma -d soma_brain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Redis (Celery broker + cache) ---
+  redis:
+    image: redis:7.2-alpine
+    container_name: soma-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  weaviate_data:
+  postgres_data:
+  redis_data:
