@@ -120,13 +120,43 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     return text
 
 
-def _call_ollama(prompt: str, model: str | None = None) -> str:
-    """Send a prompt to Ollama and return the response text.
+def _call_gemini(prompt: str, max_retries: int = 3) -> str:
+    """Send a prompt to Google Gemini API and return the response text.
 
-    Uses the /api/generate endpoint (not /api/chat) because we want a single
-    completion, not a multi-turn conversation. The stream=False parameter
-    makes Ollama return the full response in one JSON object instead of
-    streaming tokens — simpler to parse and sufficient for extraction tasks.
+    Uses the google-genai SDK. Free tier has rate limits (~15 RPM, ~1M tokens/day).
+    Retries on 429 (rate limit) with exponential backoff.
+    """
+    import time as _time
+    from google import genai
+    from google.genai import errors as genai_errors
+
+    settings = get_settings()
+    client = genai.Client(api_key=settings.gemini_api_key)
+
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=prompt,
+                config={
+                    "temperature": 0.1,
+                    "max_output_tokens": 2048,
+                },
+            )
+            return response.text
+        except genai_errors.ClientError as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1) * 15  # 30s, 60s, 120s
+                logger.warning("Gemini rate limit hit, retrying in {}s...", wait)
+                _time.sleep(wait)
+            else:
+                raise
+
+
+def _call_ollama(prompt: str, model: str | None = None) -> str:
+    """Send a prompt to Ollama (local) and return the response text.
+
+    Fallback for systems with GPU that can run local models.
     """
     settings = get_settings()
     model = model or settings.gemma_model
@@ -138,14 +168,30 @@ def _call_ollama(prompt: str, model: str | None = None) -> str:
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.1,     # low temp for structured extraction
-                "num_predict": 2048,    # enough for the JSON response
+                "temperature": 0.1,
+                "num_predict": 2048,
             },
         },
-        timeout=120.0,  # Gemma 4B can take 30-60s on CPU
+        timeout=120.0,
     )
     response.raise_for_status()
     return response.json()["response"]
+
+
+def _call_llm(prompt: str, model: str | None = None) -> str:
+    """Route to Gemini API (preferred) or Ollama (fallback).
+
+    Gemini API works on any system without GPU. Ollama requires local
+    model installation. We check which is configured and use that.
+    """
+    settings = get_settings()
+
+    if settings.use_gemini:
+        logger.info("Using Gemini API ({})", settings.gemini_model)
+        return _call_gemini(prompt)
+    else:
+        logger.info("Using Ollama local ({})", settings.gemma_model)
+        return _call_ollama(prompt, model)
 
 
 def _parse_json_from_response(response_text: str) -> dict:
@@ -233,10 +279,10 @@ def extract_patient_params(
 
     logger.info("Extracting patient params from report ({} chars)", len(report_text))
 
-    # Step 2: Build prompt and call Gemma
+    # Step 2: Build prompt and call LLM (Gemini API or Ollama)
     prompt = EXTRACTION_PROMPT.format(report_text=report_text)
-    raw_response = _call_ollama(prompt, model=model)
-    logger.debug("Gemma response: {}", raw_response[:500])
+    raw_response = _call_llm(prompt, model=model)
+    logger.debug("LLM response: {}", raw_response[:500])
 
     # Step 3: Parse JSON
     extracted = _parse_json_from_response(raw_response)

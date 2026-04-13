@@ -65,8 +65,17 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
 
     # --- AI Model ---
+    # Primary: Gemini API (works on any system, no GPU needed)
+    gemini_api_key: str = Field(default="", description="Google Gemini API key")
+    gemini_model: str = Field(default="gemini-2.0-flash", description="Gemini model name")
+    # Fallback: Ollama local (for systems with GPU)
     ollama_base_url: str = Field(default="http://localhost:11434")
     gemma_model: str = Field(default="gemma3:4b")
+
+    @property
+    def use_gemini(self) -> bool:
+        """True if Gemini API is configured (preferred over local Ollama)."""
+        return bool(self.gemini_api_key)
 
     # --- Modal ---
     modal_token_id: str = Field(default="")

@@ -326,17 +326,29 @@ Consider structural features beyond simple descriptors (e.g., intramolecular
 H-bonds, amphiphilicity, metabolic stability at the BBB). Be specific."""
 
     try:
-        response = httpx.post(
-            f"{settings.ollama_base_url}/api/generate",
-            json={"model": settings.gemma_model, "prompt": prompt, "stream": False,
-                  "options": {"temperature": 0.3, "num_predict": 512}},
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        return response.json()["response"].strip()
+        settings = get_settings()
+        if settings.use_gemini:
+            from google import genai
+            client = genai.Client(api_key=settings.gemini_api_key)
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=prompt,
+                config={"temperature": 0.3, "max_output_tokens": 512},
+            )
+            return response.text.strip()
+        else:
+            import httpx
+            response = httpx.post(
+                f"{settings.ollama_base_url}/api/generate",
+                json={"model": settings.gemma_model, "prompt": prompt, "stream": False,
+                      "options": {"temperature": 0.3, "num_predict": 512}},
+                timeout=60.0,
+            )
+            response.raise_for_status()
+            return response.json()["response"].strip()
     except Exception as e:
-        logger.warning("Gemma BBB reasoning failed: {}", e)
-        return f"Gemma reasoning unavailable: {e}"
+        logger.warning("LLM BBB reasoning failed: {}", e)
+        return f"LLM reasoning unavailable: {e}"
 
 
 def screen_batch(smiles_list: list[str], names: list[str] | None = None) -> list[BBBResult]:
